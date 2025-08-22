@@ -1,0 +1,114 @@
+import tkinter as tk
+from tkinter import messagebox
+import serial
+import time
+import threading
+import csv
+import datetime
+
+# === SERIAL SETUP ===
+arduino = serial.Serial('COM6', 9600, timeout=1)
+time.sleep(2)  # wait for Arduino to reset
+
+running = True
+last_speed = 0
+
+# === CSV LOGGING ===
+log_file = open("fan_log.csv", "w", newline="")
+log_writer = csv.writer(log_file)
+log_writer.writerow(["Time", "Speed", "Current (A)", "Status"])
+
+# === GUI SETUP ===
+root = tk.Tk()
+root.title("🌀 Smart Fan Controller")
+root.geometry("600x320")
+root.configure(bg="#f0f0f0")
+
+status_label = tk.Label(root, text="🔗 Connected to COM6", fg="green", font=("Arial", 12), bg="#f0f0f0")
+status_label.pack(pady=5)
+
+info_frame = tk.Frame(root, bg="#f0f0f0")
+info_frame.pack()
+speed_label = tk.Label(info_frame, text="Speed: 0", font=("Arial", 10), bg="#f0f0f0")
+speed_label.grid(row=0, column=0, padx=10)
+current_label = tk.Label(info_frame, text="Current: -- A", font=("Arial", 10), bg="#f0f0f0")
+current_label.grid(row=0, column=1, padx=10)
+fault_label = tk.Label(info_frame, text="Status: OK", font=("Arial", 10), fg="green", bg="#f0f0f0")
+fault_label.grid(row=0, column=2, padx=10)
+
+# === FAN CONTROLS ===
+control_frame = tk.Frame(root, bg="#f0f0f0")
+control_frame.pack(pady=10)
+
+def set_speed(val):
+    global last_speed
+    try:
+        arduino.write(f"{val}\n".encode())
+        last_speed = int(val)
+        speed_label.config(text=f"Speed: {val}")
+    except Exception as e:
+        print("Write error:", e)
+
+def apply_preset(val):
+    speed_slider.set(val)
+    set_speed(val)
+
+def toggle_power():
+    global power_state
+    power_state = not power_state
+    if power_state:
+        set_speed(speed_slider.get())
+        power_button.config(text="🟢 ON", bg="#4CAF50")
+    else:
+        set_speed(0)
+        power_button.config(text="🔴 OFF", bg="#F44336")
+
+# Slider
+speed_slider = tk.Scale(control_frame, from_=0, to=255, orient=tk.HORIZONTAL, length=400,
+                        label="Fan Speed", bg="#f0f0f0", command=lambda val: set_speed(int(val)))
+speed_slider.grid(row=0, column=0, columnspan=5, pady=10)
+
+# Preset buttons
+tk.Button(control_frame, text="Low", bg="#4CAF50", fg="white", width=10,
+          command=lambda: apply_preset(64)).grid(row=1, column=0, padx=2)
+tk.Button(control_frame, text="Medium", bg="#2196F3", fg="white", width=10,
+          command=lambda: apply_preset(128)).grid(row=1, column=1, padx=2)
+tk.Button(control_frame, text="Fast", bg="#FF9800", fg="white", width=10,
+          command=lambda: apply_preset(192)).grid(row=1, column=2, padx=2)
+tk.Button(control_frame, text="Turbo", bg="#F44336", fg="white", width=10,
+          command=lambda: apply_preset(255)).grid(row=1, column=3, padx=2)
+
+# Power Button
+power_state = True
+power_button = tk.Button(control_frame, text="🟢 ON", bg="#4CAF50", fg="white", width=10, command=toggle_power)
+power_button.grid(row=1, column=4, padx=2)
+
+# === READER LOOP ===
+def reader_loop():
+    while running:
+        if arduino.in_waiting:
+            try:
+                line = arduino.readline().decode().strip()
+                if line.startswith("CURR:"):
+                    current = float(line.split(":")[1])
+                    current_label.config(text=f"Current: {current:.2f} A")
+                    log_writer.writerow([datetime.datetime.now().strftime("%H:%M:%S"), last_speed, current, "OK"])
+                elif line.startswith("FAULT:"):
+                    fault_label.config(text="Status: FAULT", fg="red")
+                    set_speed(0)
+                elif line.startswith("STATUS:"):
+                    fault_label.config(text=f"Status: {line[7:]}", fg="green")
+            except Exception as e:
+                print("Read error:", e)
+        time.sleep(0.2)
+
+threading.Thread(target=reader_loop, daemon=True).start()
+
+def on_close():
+    global running
+    running = False
+    log_file.close()
+    root.destroy()
+
+root.protocol("WM_DELETE_WINDOW", on_close)
+root.mainloop()
