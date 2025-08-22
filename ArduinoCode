@@ -1,0 +1,31 @@
+const int fanPin = 9;
+const int currentPin = A0;
+
+float sensitivity = 0.066;  // For ACS712 30A
+float offset = 2.5;         // Midpoint voltage
+int speed = 0;
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(fanPin, OUTPUT);
+}
+
+void loop() {
+  analogWrite(fanPin, speed);
+
+  // Read and send current
+  int adcValue = analogRead(currentPin);
+  float voltage = adcValue * 5.0 / 1023.0;
+  float current = (voltage - offset) / sensitivity;
+  Serial.print("CURR:");
+  Serial.println(current, 2);
+
+  delay(500);
+}
+
+void serialEvent() {
+  while (Serial.available()) {
+    speed = Serial.readStringUntil('\n').toInt();
+    speed = constrain(speed, 0, 255);
+  }
+}
