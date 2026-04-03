@@ -1,4 +1,5 @@
-# 🌀 WindMaster 5000
+# 🌀 SmartFan Controller
+
 
 **A Python-GUI controlled smart fan system with Arduino, real-time current monitoring, preset profiles, and data logging.**
 
